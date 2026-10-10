@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FairIQ - Multi-App Fare Comparator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen py-10 px-4">
+  <div class="max-w-5xl mx-auto space-y-8">
+    <!-- Header -->
+    <div class="text-center space-y-2">
+      <div class="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full text-emerald-400 text-xs font-semibold uppercase tracking-wider">
+        <span>⚡ Live Aggregation Engine</span>
+      </div>
+      <h1 class="text-4xl font-extrabold tracking-tight text-white">Fair<span class="text-emerald-400">IQ</span></h1>
+      <p class="text-slate-400 text-sm">Direct side-by-side comparison across Uber, Ola, and Rapido for all transport modes</p>
+    </div>
+
+    <!-- Location Inputs -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+      <form id="fareForm" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs uppercase text-slate-400 font-bold tracking-wide">Pickup Location (Origin)</label>
+            <input type="text" id="origin" value="Pimpri, Pune" required
+                   class="w-full mt-1.5 bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-emerald-400 transition" />
+          </div>
+          <div>
+            <label class="text-xs uppercase text-slate-400 font-bold tracking-wide">Drop Location (Destination)</label>
+            <input type="text" id="destination" value="Shivajinagar, Pune" required
+                   class="w-full mt-1.5 bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-emerald-400 transition" />
+          </div>
+        </div>
+
+        <button type="submit" id="submitBtn"
+                class="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold rounded-xl transition duration-150 shadow-lg shadow-emerald-500/20">
+          Compare Uber, Ola & Rapido
+        </button>
+      </form>
+    </div>
+
+    <!-- Results Section -->
+    <div id="results" class="hidden space-y-6">
+      
+      <!-- Auto-calculated Route Badge -->
+      <div class="bg-slate-900/90 border border-slate-800 px-6 py-3.5 rounded-xl flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div class="flex items-center gap-2 text-slate-300">
+          <span class="text-emerald-400">📍</span>
+          <span id="routeOrigin" class="font-semibold text-white"></span>
+          <span class="text-slate-500">➔</span>
+          <span id="routeDest" class="font-semibold text-white"></span>
+        </div>
+        <div class="flex items-center gap-4 text-xs font-semibold">
+          <span class="bg-slate-800 px-3 py-1 rounded-md text-emerald-300" id="routeDistance"></span>
+          <span class="bg-slate-800 px-3 py-1 rounded-md text-blue-300" id="routeDuration"></span>
+        </div>
+      </div>
+
+      <!-- Overall Absolute Winner Banner -->
+      <div id="winnerBanner" class="bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-900 border border-emerald-500/50 p-6 rounded-2xl flex items-center justify-between shadow-xl">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- 3x3 Full Side-by-Side Matrix -->
+      <div class="space-y-4">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <span>📊</span> Direct Side-by-Side Comparison
+        </h3>
+
+        <div id="matrixContainer" class="space-y-4">
+          <!-- BIKE, AUTO, CAB cards rendered dynamically -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('fareForm');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      submitBtn.innerText = "Fetching real-time quotes...";
+      submitBtn.disabled = true;
+
+      const payload = {
+        origin: document.getElementById('origin').value,
+        destination: document.getElementById('destination').value
+      };
+
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/compare', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || "Unable to compute route.");
+        }
+
+        const data = await res.json();
+
+        // 1. Update Route Info
+        document.getElementById('routeOrigin').innerText = data.origin;
+        document.getElementById('routeDest').innerText = data.destination;
+        document.getElementById('routeDistance').innerText = '${data.distance_km} km'; // Uses single quotes '
+        document.getElementById('routeDuration').innerText = '~${data.duration_display}'; // Uses single quotes '
+
+        // 2. Render Absolute Winner Banner
+        const abs = data.absolute_cheapest;
+        document.getElementById('winnerBanner').innerHTML = `
+          <div>
+            <span class="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 text-xs font-bold uppercase rounded-md tracking-wider">
+              Lowest Fare Overall
+            </span>
+            <h2 class="text-2xl font-black text-white mt-2">${abs.cheapest_provider} (${abs.service_name})</h2>
+            <p class="text-xs text-slate-400 mt-1">Vehicle: <strong class="text-slate-200">${abs.vehicle_category}</strong> • ETA: ${abs.eta_minutes} mins</p>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-slate-400 uppercase font-bold">Unbeatable Price</span>
+            <div class="text-3xl font-black text-emerald-400">₹${abs.lowest_fare.toFixed(2)}</div>
+          </div>
+        `;
+
+        // 3. Render 3x3 Matrix for BIKE, AUTO, and CAB
+        const categories = [
+          { key: "BIKE", label: "Bike / 2-Wheeler", icon: "🏍️" },
+          { key: "AUTO", label: "Auto Rickshaw", icon: "🛺" },
+          { key: "CAB_ECONOMY", label: "Cab / Car (Economy)", icon: "🚗" }
+        ];
+
+        const container = document.getElementById('matrixContainer');
+        container.innerHTML = '';
+
+        categories.forEach(cat => {
+          // Filter quotes for this category
+          const categoryQuotes = data.all_quotes.filter(q => q.vehicle_category === cat.key);
+          const minFare = Math.min(...categoryQuotes.map(q => q.total_fare));
+
+          let cardsHTML = '';
+          const providers = ["UBER", "OLA", "RAPIDO"];
+
+          providers.forEach(p => {
+            const q = categoryQuotes.find(item => item.provider === p);
+            if (!q) return;
+
+            const isCheapest = q.total_fare === minFare;
+
+            cardsHTML += `
+              <div class="relative p-4 rounded-xl border ${isCheapest ? 'bg-emerald-950/30 border-emerald-500/70 shadow-md shadow-emerald-500/10' : 'bg-slate-800/40 border-slate-700/60'} flex flex-col justify-between">
+                ${isCheapest ? '<span class="absolute -top-2.5 right-3 bg-emerald-500 text-slate-950 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full shadow">Cheapest</span>' : ''}
+                
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold tracking-wider ${p === 'UBER' ? 'text-white' : p === 'OLA' ? 'text-yellow-400' : 'text-amber-500'}">${p}</span>
+                  <span class="text-[11px] text-slate-400">${q.service_name}</span>
+                </div>
+
+                <div class="my-3">
+                  <div class="text-2xl font-black ${isCheapest ? 'text-emerald-400' : 'text-slate-100'}">₹${q.total_fare.toFixed(2)}</div>
+                  <div class="text-[11px] text-slate-400 mt-0.5">Surge: ${q.surge_multiplier}x</div>
+                </div>
+
+                <div class="text-xs text-slate-400 border-t border-slate-700/40 pt-2 flex justify-between">
+                  <span>Pickup ETA:</span>
+                  <span class="font-semibold text-slate-200">${q.eta_minutes} mins</span>
+                </div>
+              </div>
+            `;
+          });
+
+          container.innerHTML += `
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-3">
+              <div class="text-sm font-bold text-slate-300 flex items-center gap-2">
+                <span>${cat.icon}</span>
+                <span>${cat.label}</span>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                ${cardsHTML}
+              </div>
+            </div>
+          `;
+        });
+
+        document.getElementById('results').classList.remove('hidden');
+
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        submitBtn.innerText = "Compare Uber, Ola & Rapido";
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
